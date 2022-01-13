@@ -390,6 +390,11 @@ class Number:
 	def powed_by(self, other):
 		if isinstance(other, Number):
 			return Number(self.value ** other.value).set_context(self.context), None
+	def copy(self):
+		copy=Number(self.value)
+		copy.set_pos(self.pos_start,self.pos_end)
+		copy.set_context(self.context)
+		return copy
 	def __repr__(self):
 		return str(self.value)
 
@@ -402,6 +407,25 @@ class Context:
 		self.display_name = display_name
 		self.parent = parent
 		self.parent_entry_pos = parent_entry_pos
+		self.symbol_table = None
+
+################
+# SYMBOL TABLE #
+################
+
+class SymbolTable:
+	def __init__(self):
+		self.symbols = {}
+		self.parent = None
+	def get(self, name):
+		value = self.symbols.get(name, None)
+		if value == None and self.parent:
+			return self.parent.get(name)
+		return value
+	def set(self, name, value):
+		self.symbols[name] = value
+	def remove(self, name):
+		del self.symbols[name]
 
 ###############
 # INTERPRETER #
@@ -416,6 +440,21 @@ class Interpreter:
 		raise Exception(f"No visit_{type(node).__name__} method defined")
 	def visit_NumberNode(self, node, context):
 		return RTResult().success(Number(node.tok.value).set_context(context).set_pos(node.pos_start, node.pos_end))
+	def visit_VarAccessNode(self, node, context):
+		res = RTResult()
+		var_name = node.var_name_tok.value
+		value = context.symbol_table.get(var_name)
+		if not value:
+			return res.failure(RTError(node.pos_start, node.pos_end, f"'{var_name}' is not defined", context))
+		return res.success(value)
+	def visit_VarAssignNode(self, node, context):
+		res = RTResult()
+		var_name = node.var_name_tok.value
+		value = res.register(self.visit(node.value_node, context))
+		if res.error: return res
+		context.symbol_table.set(var_name, value)
+		return res.success(value)
+
 	def visit_BinOpNode(self, node, context):
 		res = RTResult()
 		left = res.register(self.visit(node.left_node, context))
@@ -452,6 +491,9 @@ class Interpreter:
 # RUN #
 #######
 
+global_symbol_table = SymbolTable()
+global_symbol_table.set("null", Number(0))
+
 def run(fn, text):
 	lexer = Lexer(fn, text)
 	tokens, error = lexer.make_tokens()
@@ -463,6 +505,7 @@ def run(fn, text):
 
 	interpreter = Interpreter()
 	context = Context("<main_program>")
+	context.symbol_table = global_symbol_table
 	result = interpreter.visit(ast.node, context)
 	
 	return result.value, result.error
