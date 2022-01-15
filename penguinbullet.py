@@ -491,9 +491,15 @@ class Interpreter:
 # RUN #
 #######
 
+def clear():
+	import os, platform
+	if platform.system() == "Windows":
+		os.system("cls")
+	else:
+		os.system("clear")
+
 global_symbol_table = SymbolTable()
 global_symbol_table.set("null", Number(0))
-
 def run(fn, text):
 	lexer = Lexer(fn, text)
 	tokens, error = lexer.make_tokens()
